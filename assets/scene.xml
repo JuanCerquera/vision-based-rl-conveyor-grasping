@@ -1,0 +1,188 @@
+<mujoco model="franka_picking_task1">
+
+  <option timestep="0.002" gravity="0 0 -9.81"/>
+
+  <!-- Franka Panda arm + hand (base placed at z=0.42 in panda.xml) -->
+  <include file="panda.xml"/>
+
+  <!-- Visual settings -->
+  <visual>
+    <headlight ambient="0.4 0.4 0.4" diffuse="0.6 0.6 0.6" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global offwidth="1920" offheight="1080"/>
+  </visual>
+
+  <asset>
+    <texture name="grid" type="2d" builtin="checker"
+             width="512" height="512"
+             rgb1="0.7 0.7 0.7" rgb2="0.8 0.8 0.8"/>
+    <material name="grid_mat" texture="grid"
+              texrepeat="4 4" reflectance="0.1"/>
+    <material name="table_mat" rgba="0.40 0.25 0.12 1"/>
+    <material name="base_mat" rgba="0.3 0.3 0.3 1"/>
+    <!-- Object materials -->
+    <material name="mat_cereal" rgba="1.0 0.5 0.0 1"/>
+    <material name="mat_can"    rgba="0.9 0.1 0.1 1"/>
+    <material name="mat_milk"   rgba="0.1 0.3 0.9 1"/>
+    <material name="mat_ball"   rgba="0.6 0.9 0.1 1"/>
+  </asset>
+
+  <worldbody>
+
+    <!-- Ground plane -->
+    <geom name="floor" type="plane" size="3 3 0.1"
+          material="grid_mat" friction="1 0.005 0.0001"/>
+
+    <!-- Single unified table (surface at z=0.42).
+         Robot base (link0) at x=0 sits at the left edge.
+         Belt runs along Y in the middle-right portion — matches paper layout.
+         Center x=0.35: spans x=-0.15 to x=0.85, y=-0.35 to y=0.35 -->
+    <!-- Longer table: robot at left edge, belt further right, placement box in between.
+         Center at x=0.55: spans x=-0.15 to x=1.25, y=-0.35 to y=0.35 -->
+    <body name="table" pos="0.55 0.0 0.4">
+      <geom name="table_top" type="box" size="0.70 0.35 0.02"
+            material="table_mat" mass="60"
+            friction="1 0.005 0.0001"/>
+      <geom type="box" size="0.02 0.02 0.19" pos="-0.65 -0.30 -0.21" material="base_mat" mass="1"/>
+      <geom type="box" size="0.02 0.02 0.19" pos="-0.65  0.30 -0.21" material="base_mat" mass="1"/>
+      <geom type="box" size="0.02 0.02 0.19" pos=" 0.65 -0.30 -0.21" material="base_mat" mass="1"/>
+      <geom type="box" size="0.02 0.02 0.19" pos=" 0.65  0.30 -0.21" material="base_mat" mass="1"/>
+    </body>
+
+    <!-- Phantom marker: semi-transparent sphere showing YOLO estimated position -->
+    <body name="phantom_marker" pos="5.0 0.0 0.0">
+      <freejoint name="phantom_joint"/>
+      <geom type="sphere" size="0.04" rgba="1 1 0 0.5"
+            contype="0" conaffinity="0"/>
+    </body>
+
+    <!-- ── Objects (class 0-3) ─────────────────────────────────────────────
+         All start underground; env.reset() places the active one on the table.
+         Table surface z=0.42; object z_nom = 0.42 + half-height.
+    -->
+
+    <!-- Class 0: Triangular prism (paper Table A2) — box approx 0.05×0.05×0.12 m, 0.6 kg
+         z_nom = 0.42 + 0.06 = 0.48 -->
+    <body name="obj_cereal" pos="0.5 0.0 -5.0">
+      <freejoint name="obj_cereal_joint"/>
+      <geom name="obj_cereal_geom" type="box" size="0.025 0.025 0.06"
+            material="mat_cereal" mass="0.6"
+            friction="1.5 0.005 0.0001" condim="4"/>
+    </body>
+
+    <!-- Class 1: Soda can (paper Table A2) — cylinder r=0.0225 h=0.107 m, 0.3 kg
+         z_nom = 0.42 + 0.0535 = 0.4735 -->
+    <body name="obj_can" pos="0.5 0.0 -5.0">
+      <freejoint name="obj_can_joint"/>
+      <geom name="obj_can_geom" type="cylinder" size="0.0225 0.0535"
+            material="mat_can" mass="0.3"
+            friction="1.5 0.005 0.0001" condim="4"/>
+    </body>
+
+    <!-- Class 2: Carton (paper Table A2) — box 0.055×0.04×0.10 m, 0.45 kg
+         z_nom = 0.42 + 0.05 = 0.47 -->
+    <body name="obj_milk" pos="0.5 0.0 -5.0">
+      <freejoint name="obj_milk_joint"/>
+      <geom name="obj_milk_geom" type="box" size="0.0275 0.02 0.05"
+            material="mat_milk" mass="0.45"
+            friction="1.5 0.005 0.0001" condim="4"/>
+    </body>
+
+    <!-- Class 3: Apple (paper Table A2) — sphere r=0.023 m, 0.2 kg
+         z_nom = 0.42 + 0.023 = 0.443 -->
+    <body name="obj_ball" pos="0.5 0.0 -5.0">
+      <freejoint name="obj_ball_joint"/>
+      <geom name="obj_ball_geom" type="sphere" size="0.023"
+            material="mat_ball" mass="0.2"
+            friction="0.8 0.005 0.0001" condim="4"/>
+    </body>
+
+    <!-- Conveyor belt (visual only — contype/conaffinity=0, no physics interaction)
+         Simple flat white strip matching paper Figure 7.
+         400 mm wide, near edge 300 mm from robot base (x=0.30 to x=0.70).
+         Runs in +y direction, flush with table surface. -->
+    <body name="conveyor_belt" pos="0.65 0.0 0.42">
+      <geom name="belt_surface" type="box" size="0.20 0.325 0.002"
+            rgba="1.0 1.0 1.0 1" contype="0" conaffinity="0"/>
+    </body>
+
+    <!-- Placement bins (physical colliders enabled).
+         Bin 1 (soda can,  class 1): red,  y < 0 side.
+         Bin 2 (carton,    class 2): blue, y > 0 side.
+         Both sit on the table surface (z=0.42), between the robot and the belt. -->
+    <!-- Keep bins clearly off the conveyor (belt x-range is 0.45..0.85).
+         Place bins in front of the robot at x=0.30 for clean drop area. -->
+    <body name="bin_can" pos="0.30 -0.20 0.42">
+      <geom name="bin_can_floor" type="box" size="0.12 0.12 0.004" rgba="0.85 0.15 0.15 0.85" friction="1.2 0.03 0.001"/>
+      <geom name="bin_can_wall_back"  type="box" size="0.12 0.006 0.045" pos="0 -0.126 0.049" rgba="0.85 0.15 0.15 0.85"/>
+      <geom name="bin_can_wall_front" type="box" size="0.12 0.006 0.045" pos="0  0.126 0.049" rgba="0.85 0.15 0.15 0.85"/>
+      <geom name="bin_can_wall_left"  type="box" size="0.006 0.12 0.045" pos="-0.126 0 0.049" rgba="0.85 0.15 0.15 0.85"/>
+      <geom name="bin_can_wall_right" type="box" size="0.006 0.12 0.045" pos=" 0.126 0 0.049" rgba="0.85 0.15 0.15 0.85"/>
+      <site name="bin_can_target" pos="0 0 0.08" size="0.005"/>
+    </body>
+
+    <body name="bin_carton" pos="0.30 0.20 0.42">
+      <geom name="bin_carton_floor" type="box" size="0.12 0.12 0.004" rgba="0.15 0.15 0.85 0.85" friction="1.2 0.03 0.001"/>
+      <geom name="bin_carton_wall_back"  type="box" size="0.12 0.006 0.045" pos="0 -0.126 0.049" rgba="0.15 0.15 0.85 0.85"/>
+      <geom name="bin_carton_wall_front" type="box" size="0.12 0.006 0.045" pos="0  0.126 0.049" rgba="0.15 0.15 0.85 0.85"/>
+      <geom name="bin_carton_wall_left"  type="box" size="0.006 0.12 0.045" pos="-0.126 0 0.049" rgba="0.15 0.15 0.85 0.85"/>
+      <geom name="bin_carton_wall_right" type="box" size="0.006 0.12 0.045" pos=" 0.126 0 0.049" rgba="0.15 0.15 0.85 0.85"/>
+      <site name="bin_carton_target" pos="0 0 0.08" size="0.005"/>
+    </body>
+
+    <!-- Overhead camera pointing down at belt area -->
+    <camera name="overhead_cam" pos="0.5 0.0 1.6"
+            xyaxes="1 0 0 0 1 0" fovy="60"/>
+
+    <!-- Perception camera: matches paper RGB-D camera position on tripod -->
+    <camera name="perception_cam" pos="1.15 -0.42 0.90"
+            xyaxes="0.63 0.78 0 -0.40 0.32 0.86" fovy="50"/>
+
+    <!-- RGB-D camera on tripod — body x,y matches perception_cam pos -->
+    <body name="perception_cam_body" pos="1.15 -0.42 0.0">
+      <!-- Camera head at z=0.90 to match perception_cam -->
+      <geom type="box" size="0.04 0.03 0.025" pos="0 0 0.90"
+            rgba="0.1 0.1 0.1 1" mass="0" contype="0" conaffinity="0"/>
+      <!-- Vertical centre pole: from z=0.25 up to z=0.90 -->
+      <geom type="cylinder" size="0.010 0.325" pos="0 0 0.575"
+            rgba="0.25 0.25 0.25 1" mass="0" contype="0" conaffinity="0"/>
+      <!-- Three tripod legs using fromto (from pole base to floor) -->
+      <geom type="cylinder" size="0.007" fromto="0 0 0.25   0.30 -0.35 0"
+            rgba="0.25 0.25 0.25 1" mass="0" contype="0" conaffinity="0"/>
+      <geom type="cylinder" size="0.007" fromto="0 0 0.25   0.30  0.35 0"
+            rgba="0.25 0.25 0.25 1" mass="0" contype="0" conaffinity="0"/>
+      <geom type="cylinder" size="0.007" fromto="0 0 0.25  -0.35  0.0  0"
+            rgba="0.25 0.25 0.25 1" mass="0" contype="0" conaffinity="0"/>
+    </body>
+
+    <!-- Side camera -->
+    <camera name="side_cam" pos="1.2 -0.8 1.1"
+            xyaxes="0.56 0.83 0 -0.33 0.22 0.92" fovy="50"/>
+
+    <!-- Lights -->
+    <light name="main_light" pos="0.5 0 2.0" dir="0 0 -1"
+           diffuse="0.8 0.8 0.8" specular="0.2 0.2 0.2" castshadow="true"/>
+    <light name="fill_light" pos="-1 -1 1.5" dir="1 1 -1"
+           diffuse="0.3 0.3 0.3" specular="0 0 0" castshadow="false"/>
+
+  </worldbody>
+
+  <!-- Gripper simulation options -->
+  <option cone="elliptic" impratio="40" noslip_iterations="10"/>
+
+  <!-- Home keyframe:
+       7 arm joints + 2 finger joints (open=0.04) + 4×7 object freejoints.
+       Franka home: 0 0 0 -pi/2 0 pi/2 -pi/4  fingers open.
+       Inactive objects parked at x=5 off-scene.
+       z values = half-height: cube=0.025, can=0.05, milk=0.09, ball=0.035 -->
+  <keyframe>
+    <key name="pick_home"
+         qpos="0 0 0 -1.5708 0 1.5708 -0.7854 0.04 0.04
+               5.0 0.0 0.06   1 0 0 0
+               5.0 0.3 0.0535 1 0 0 0
+               5.0 0.6 0.05   1 0 0 0
+               5.0 0.9 0.023  1 0 0 0"
+         ctrl="0 0 0 -1.5708 0 1.5708 -0.7854 255"/>
+  </keyframe>
+
+</mujoco>
